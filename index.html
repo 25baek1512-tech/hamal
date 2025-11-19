@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>간단한 캘린더 앱</title>
+  <style>
+    :root{
+      --bg:#0f172a; --card:#0b1220; --accent:#7c3aed; --muted:#94a3b8; --surface:#0b1220;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans KR',sans-serif;background:linear-gradient(180deg,#07112a 0%,#071b2f 100%);color:#e6eef8;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:28px}
+    .app{width:100%;max-width:1100px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .controls{display:flex;gap:8px;align-items:center}
+    button, .btn{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 12px;border-radius:10px;color:inherit;cursor:pointer}
+    .btn.secondary{border-color:rgba(255,255,255,0.03);opacity:0.9}
+    .topbar{display:flex;gap:12px;align-items:center}
+
+    .container{display:grid;grid-template-columns: 1fr 360px;gap:18px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);padding:16px;border-radius:14px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+
+    .calendar-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    .month-title{font-size:18px;font-weight:600}
+    .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+    .weekday{padding:8px 6px;text-align:center;color:var(--muted);font-size:13px}
+
+    .day{min-height:96px;padding:8px;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent);position:relative;overflow:hidden}
+    .day.dim{opacity:0.35}
+    .day-number{font-weight:600}
+    .events{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+    .event-pill{background:rgba(124,58,237,0.12);padding:6px 8px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .add-day-btn{position:absolute;right:8px;bottom:8px;background:var(--accent);color:white;padding:6px;border-radius:8px;border:none}
+
+    aside{display:flex;flex-direction:column;gap:12px}
+    .mini{display:flex;gap:8px;align-items:center}
+    .today{background:rgba(255,255,255,0.03);padding:10px;border-radius:10px}
+
+    /* modal */
+    .overlay{position:fixed;inset:0;background:linear-gradient(180deg,rgba(2,6,23,0.6),rgba(2,6,23,0.8));display:flex;align-items:center;justify-content:center;padding:20px;z-index:60}
+    .modal{width:100%;max-width:520px;background:linear-gradient(180deg,#07112a,#071b2f);padding:18px;border-radius:12px;box-shadow:0 10px 40px rgba(2,6,23,0.8)}
+    label{display:block;margin-top:8px;font-size:13px;color:var(--muted)}
+    input[type=text],textarea,input[type=datetime-local],select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+
+    .small{font-size:13px;color:var(--muted)}
+    footer{margin-top:14px;color:var(--muted);font-size:13px}
+
+    @media(max-width:880px){
+      .container{grid-template-columns:1fr;}
+      aside{order:2}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="topbar">
+        <h1>내 캘린더</h1>
+        <div class="small">로컬 저장(localStorage)에 일정이 저장됩니다.</div>
+      </div>
+      <div class="controls">
+        <button id="todayBtn" class="btn">오늘</button>
+        <button id="prevBtn" class="btn">◀</button>
+        <button id="nextBtn" class="btn">▶</button>
+        <button id="bgBtn" class="btn">배경색</button>
+        <button id="importBtn" class="btn secondary">가져오기</button>
+        <button id="exportBtn" class="btn secondary">내보내기</button>
+      </div>
+    </header>
+
+    <div class="container">
+      <main class="card">
+        <div class="calendar-header">
+          <div class="month-title" id="monthTitle">--</div>
+          <div class="small" id="rangeInfo">--</div>
+        </div>
+
+        <div class="grid" id="weekdayRow"></div>
+        <div class="grid" id="daysGrid" style="margin-top:8px"></div>
+
+      </main>
+
+      <aside>
+        <div class="card today">
+          <div class="small">선택된 날짜</div>
+          <div style="font-weight:700;margin-top:6px" id="selectedDate">-</div>
+          <div id="eventList" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card">
+          <div class="small">도움말</div>
+          <ul class="small" style="margin:8px 0 0 16px;padding:0">
+            <li>날짜를 클릭하여 일정을 추가하세요.</li>
+            <li>이벤트 클릭 후 편집/삭제 가능합니다.</li>
+            <li>가져오기/내보내기로 백업하세요.</li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="small">간단한 캘린더 앱 — 로컬 전용</footer>
+  </div>
+
+  <!-- Modal -->
+  <div id="modalRoot" style="display:none"></div>
+
+  <script>
+    // 유틸
+    const $ = sel => document.querySelector(sel);
+    const qs = sel => document.querySelectorAll(sel);
+
+    // 상태
+    let viewDate = new Date();
+    let selectedDate = null; // yyyy-mm-dd
+    const STORAGE_KEY = 'simple_calendar_events_v1';
+
+    // 초기화
+    const weekdayNames = ['일','월','화','수','목','금','토'];
+    const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+
+    function start(){
+      renderWeekdays();
+      loadFromStorage();
+      initBackground();
+      renderCalendar();
+      attachHandlers();
+      selectDate(formatDate(new Date()));
+    }
+
+    function attachHandlers(){
+      $('#prevBtn').addEventListener('click', ()=>{ viewDate.setMonth(viewDate.getMonth()-1); renderCalendar(); });
+      $('#nextBtn').addEventListener('click', ()=>{ viewDate.setMonth(viewDate.getMonth()+1); renderCalendar(); });
+      $('#todayBtn').addEventListener('click', ()=>{ viewDate = new Date(); renderCalendar(); selectDate(formatDate(new Date())); });
+      $('#exportBtn').addEventListener('click', exportEvents);
+      $('#importBtn').addEventListener('click', ()=>{ showImportDialog(); });
+      $('#bgBtn').addEventListener('click', ()=>{ showBgDialog(); });
+    }
+
+    function renderWeekdays(){
+      const wr = $('#weekdayRow'); wr.innerHTML='';
+      weekdayNames.forEach(d=>{ const el = document.createElement('div'); el.className='weekday'; el.textContent=d; wr.appendChild(el);} )
+    }
+
+    function renderCalendar(){
+      const grid = $('#daysGrid'); grid.innerHTML='';
+      const year = viewDate.getFullYear();
+      const month = viewDate.getMonth();
+      $('#monthTitle').textContent = `${year}년 ${monthNames[month]}`;
+
+      // 첫째 날의 요일과 총 일수 계산
+      const first = new Date(year, month, 1);
+      const last = new Date(year, month+1, 0);
+      const startDay = first.getDay();
+      const total = last.getDate();
+
+      // 앞의 빈칸들 (이전 달)
+      const prevLast = new Date(year, month, 0).getDate();
+      for(let i=0;i<startDay;i++){
+        const dayNum = prevLast - startDay + 1 + i;
+        const cell = makeDayCell(new Date(year, month-1, dayNum), true);
+        grid.appendChild(cell);
+      }
+
+      // 이번달
+      for(let d=1; d<=total; d++){
+        const cell = makeDayCell(new Date(year, month, d), false);
+        grid.appendChild(cell);
+      }
+
+      // 다음달의 첫 주 남은 칸
+      const cellsSoFar = grid.children.length;
+      const extra = (7 - (cellsSoFar % 7)) % 7;
+      for(let i=1;i<=extra;i++){
+        const cell = makeDayCell(new Date(year, month+1, i), true);
+        grid.appendChild(cell);
+      }
+
+      const from = new Date(year, month, 1);
+      const to = new Date(year, month, total);
+      $('#rangeInfo').textContent = `${formatDate(from)} - ${formatDate(to)}`;
+    }
+
+    function makeDayCell(dateObj, isDim){
+      const cell = document.createElement('div'); cell.className='day' + (isDim? ' dim':'');
+      const dayNum = document.createElement('div'); dayNum.className='day-number'; dayNum.textContent = dateObj.getDate();
+      cell.appendChild(dayNum);
+
+      const eventsWrap = document.createElement('div'); eventsWrap.className='events';
+      const dateKey = formatDate(dateObj);
+      const evts = getEventsForDate(dateKey);
+      evts.slice(0,3).forEach(ev=>{
+        const pill = document.createElement('div'); pill.className='event-pill'; pill.textContent = ev.title + (ev.time? ' — '+ev.time : '');
+        pill.addEventListener('click', (e)=>{ e.stopPropagation(); openEditModal(dateKey, ev.id); });
+        eventsWrap.appendChild(pill);
+      });
+
+      cell.appendChild(eventsWrap);
+
+      const addBtn = document.createElement('button'); addBtn.className='add-day-btn'; addBtn.textContent='+';
+      addBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openAddModal(dateKey); });
+      cell.appendChild(addBtn);
+
+      cell.addEventListener('click', ()=>{ selectDate(dateKey); });
+
+      // highlight today
+      const todayKey = formatDate(new Date());
+      if(dateKey === todayKey){
+        const dot = document.createElement('div'); dot.style.cssText='position:absolute;left:8px;top:8px;width:8px;height:8px;border-radius:50%;background:var(--accent)';
+        cell.appendChild(dot);
+      }
+
+      return cell;
+    }
+
+    // 날짜 선택 및 사이드 이벤트 목록 렌더링
+    function selectDate(dateKey){
+      selectedDate = dateKey;
+      $('#selectedDate').textContent = dateKey;
+      renderSelectedEvents();
+      // highlight selection visually (simple approach: remove outlines and add border on matching day)
+      [...qs('.day')].forEach(el=>{ el.style.border = ''; });
+      // find the first day element that matches dateKey
+      const parts = dateKey.split('-').map(x=>parseInt(x,10));
+      [...qs('.day')].forEach(el=>{
+        const num = parseInt(el.querySelector('.day-number').textContent,10);
+        // crude test: match by number and presence/absence of dim relative to month
+        if(num === parts[2]){
+          // try to match by checking if it's within current view month
+          // not perfect but OK for this demo
+          el.style.border = '1px solid rgba(124,58,237,0.4)';
+        }
+      });
+    }
+
+    function renderSelectedEvents(){
+      const list = $('#eventList'); list.innerHTML='';
+      const evts = getEventsForDate(selectedDate);
+      if(!evts || evts.length===0){ list.innerHTML = '<div class="small">일정이 없습니다. 날짜를 클릭하여 일정을 추가하세요.</div>'; return; }
+      evts.forEach(ev=>{
+        const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='space-between'; row.style.alignItems='center'; row.style.gap='6px';
+        const left = document.createElement('div'); left.innerHTML = `<div style="font-weight:700">${escapeHtml(ev.title)}</div><div class="small">${ev.time || ''}</div>`;
+        const actions = document.createElement('div');
+        const edit = document.createElement('button'); edit.className='btn'; edit.textContent='편집'; edit.style.padding='6px 8px'; edit.addEventListener('click', ()=>openEditModal(selectedDate, ev.id));
+        const del = document.createElement('button'); del.className='btn'; del.textContent='삭제'; del.style.padding='6px 8px'; del.addEventListener('click', ()=>{ if(confirm('삭제할까요?')){ deleteEvent(selectedDate, ev.id); } });
+        actions.appendChild(edit); actions.appendChild(del);
+        row.appendChild(left); row.appendChild(actions);
+        list.appendChild(row);
+      });
+    }
+
+    // 이벤트 CRUD - localStorage 기반
+    function loadFromStorage(){
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){ try{ window._events = JSON.parse(raw); }catch(e){ window._events = {}; } }
+      if(!window._events) window._events = {};
+    }
+    function saveToStorage(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(window._events)); renderCalendar(); renderSelectedEvents(); }
+
+    function getEventsForDate(dateKey){ const arr = window._events[dateKey] || []; return arr.slice().sort((a,b)=> (a.time||'').localeCompare(b.time||'') ); }
+
+    function addEvent(dateKey, ev){ if(!window._events[dateKey]) window._events[dateKey]=[]; window._events[dateKey].push(ev); saveToStorage(); }
+    function updateEvent(dateKey, evId, updates){ const arr = window._events[dateKey]||[]; const idx = arr.findIndex(x=>x.id===evId); if(idx>-1){ window._events[dateKey][idx] = {...arr[idx], ...updates}; saveToStorage(); } }
+    function deleteEvent(dateKey, evId){ const arr = window._events[dateKey]||[]; window._events[dateKey] = arr.filter(x=>x.id!==evId); saveToStorage(); }
+
+    // import/export
+    function exportEvents(){ const data = JSON.stringify(window._events, null, 2); const blob = new Blob([data],{type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download = 'calendar-events.json'; a.click(); URL.revokeObjectURL(url); }
+    function showImportDialog(){ const input = document.createElement('input'); input.type='file'; input.accept='application/json'; input.addEventListener('change',(e)=>{
+      const f = e.target.files[0]; if(!f) return; const reader = new FileReader(); reader.onload = ()=>{
+        try{ const obj = JSON.parse(reader.result); if(typeof obj === 'object'){ window._events = obj; saveToStorage(); alert('가져오기 완료'); } else alert('잘못된 파일입니다.'); }catch(err){ alert('파싱 실패: '+err.message); }
+      }; reader.readAsText(f);
+    }); input.click(); }
+
+    // 모달 생성기 (추가/편집)
+    function openAddModal(dateKey){ const container = $('#modalRoot'); container.innerHTML = '';
+      const overlay = document.createElement('div'); overlay.className='overlay';
+      const modal = document.createElement('div'); modal.className='modal';
+      modal.innerHTML = `
+        <h3>새 일정 추가 — ${dateKey}</h3>
+        <label>제목</label>
+        <input id="ev_title" type="text" placeholder="예: 회의">
+        <label>시간 (선택)</label>
+        <input id="ev_time" type="text" placeholder="예: 14:30">
+        <label>메모</label>
+        <textarea id="ev_note" rows="4" placeholder="상세 내용"></textarea>
+        <div class="modal-actions">
+          <button id="cancelBtn" class="btn">취소</button>
+          <button id="saveBtn" class="btn" style="background:var(--accent);color:white">저장</button>
+        </div>
+      `;
+      overlay.appendChild(modal); container.appendChild(overlay); container.style.display='block';
+
+      $('#cancelBtn').addEventListener('click', ()=>{ container.style.display='none'; container.innerHTML=''; });
+      $('#saveBtn').addEventListener('click', ()=>{
+        const title = $('#ev_title').value.trim(); const time = $('#ev_time').value.trim(); const note = $('#ev_note').value.trim();
+        if(!title){ alert('제목을 입력하세요.'); return; }
+        const ev = { id: 'e_'+Date.now(), title, time, note };
+        addEvent(dateKey, ev); container.style.display='none'; container.innerHTML=''; selectDate(dateKey);
+      });
+    }
+
+    function openEditModal(dateKey, evId){ const ev = (window._events[dateKey]||[]).find(x=>x.id===evId); if(!ev) return alert('이벤트를 찾을 수 없습니다.');
+      const container = $('#modalRoot'); container.innerHTML = '';
+      const overlay = document.createElement('div'); overlay.className='overlay';
+      const modal = document.createElement('div'); modal.className='modal';
+      modal.innerHTML = `
+        <h3>일정 편집 — ${dateKey}</h3>
+        <label>제목</label>
+        <input id="ev_title" type="text" value="${escapeHtmlAttr(ev.title)}">
+        <label>시간 (선택)</label>
+        <input id="ev_time" type="text" value="${escapeHtmlAttr(ev.time||'')}">
+        <label>메모</label>
+        <textarea id="ev_note" rows="4">${escapeHtmlAttr(ev.note||'')}</textarea>
+        <div style="display:flex;gap:8px;justify-content:space-between;margin-top:12px">
+          <div>
+            <button id="delBtn" class="btn" style="background:transparent">삭제</button>
+          </div>
+          <div class="modal-actions">
+            <button id="cancelBtn" class="btn">취소</button>
+            <button id="saveBtn" class="btn" style="background:var(--accent);color:white">저장</button>
+          </div>
+        </div>
+      `;
+      overlay.appendChild(modal); container.appendChild(overlay); container.style.display='block';
+
+      $('#cancelBtn').addEventListener('click', ()=>{ container.style.display='none'; container.innerHTML=''; });
+      $('#delBtn').addEventListener('click', ()=>{ if(confirm('삭제할까요?')){ deleteEvent(dateKey, evId); container.style.display='none'; container.innerHTML=''; } });
+      $('#saveBtn').addEventListener('click', ()=>{
+        const title = $('#ev_title').value.trim(); const time = $('#ev_time').value.trim(); const note = $('#ev_note').value.trim();
+        if(!title){ alert('제목을 입력하세요.'); return; }
+        updateEvent(dateKey, evId, { title, time, note }); container.style.display='none'; container.innerHTML=''; selectDate(dateKey);
+      });
+    }
+
+    function showBgDialog(){ const container = $('#modalRoot'); container.innerHTML=''; const overlay=document.createElement('div'); overlay.className='overlay'; const modal=document.createElement('div'); modal.className='modal'; modal.innerHTML=`
+        <h3>배경색 변경</h3>
+        <label>색상 선택</label>
+        <input id="bg_color_input" type="color" style="width:100%;height:48px;padding:0;border:none;cursor:pointer;">
+        <div class="modal-actions">
+          <button id="bg_cancel" class="btn">취소</button>
+          <button id="bg_apply" class="btn" style="background:var(--accent);color:white">적용</button>
+        </div>`;
+      overlay.appendChild(modal); container.appendChild(overlay); container.style.display='block';
+      const saved = localStorage.getItem('calendar_bg_color'); if(saved) $('#bg_color_input').value=saved;
+      $('#bg_cancel').addEventListener('click',()=>{ container.style.display='none'; container.innerHTML=''; });
+      $('#bg_apply').addEventListener('click',()=>{ const c = $('#bg_color_input').value; document.body.style.background=c; localStorage.setItem('calendar_bg_color',c); container.style.display='none'; container.innerHTML=''; });
+    }
+
+// 헬퍼
+    function formatDate(d){ const yyyy = d.getFullYear(); const mm = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0'); return `${yyyy}-${mm}-${dd}`; }
+    function escapeHtml(str){ if(!str) return ''; return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function escapeHtmlAttr(str){ if(!str) return ''; return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+    function initBackground(){ const saved = localStorage.getItem('calendar_bg_color'); if(saved){ document.body.style.background = saved; } }
+
+    // 시작
+    start();
+  </script>
+</body>
+</html>
